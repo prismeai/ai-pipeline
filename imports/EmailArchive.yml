@@ -1,0 +1,20 @@
+appSlug: AI Collection
+slug: EmailArchive
+config:
+  prompts:
+    genFilters: >-
+      In a MongoDB collection with the following fields:
+
+      ```
+
+      {{keys}}
+
+      ```
+
+      I want to filter my documents with this instructions:
+
+      {{instruction}}
+
+
+      Return a valid MongoDB query filter JSON object. Don't use any backquote,
+      with no text outside the JSON.

@@ -1,0 +1,199 @@
+slug: classify
+name: Classify Email Workflow
+description: >
+  AI-powered classification pipeline for insurance emails in France. Combines
+  LLM-based classification, entity extraction, rule routing, ticket history
+  analysis, hierarchical agent delegation, and external system integration.
+do:
+  - all:
+      - ClassifierAgent.chat-completion:
+          prompt: >
+            You are an expert in email classification for the French insurance
+            industry.
+
+            Your task is to classify the email based on sender {{from}},
+            recipient {{to}},
+
+            subject ({{object}}), body content ({{body}}), and attachments
+            ({{attachements}}).
+
+            Ensure compliance with GDPR and French data privacy regulations.
+
+
+            Classify each email into one of the following:
+
+            - Quote Request
+
+            - Complaint
+
+            - General Inquiry
+
+            - Contract Update
+
+            - Reimbursement Request
+
+            - Other
+
+
+            Use only the relevant input data and reply with just the chosen
+            category.
+          output: output
+      - EntityExtractorAgent.chat-completion:
+          prompt: |
+            You are a Named Entity Recognition (NER) specialist.
+            Extract and list key entities from the email content below:
+
+            "{{body}}"
+
+            Identify relevant items such as:
+            - Customer names
+            - Contract numbers
+            - Dates
+            - Locations
+            - Insurance policy references
+          output: ner
+  - EmailArchive.Insert:
+      data:
+        Exp: '{{from}}'
+        Recipient: '{{to}}'
+        Subject: '{{object}}'
+        Classification: '{{output.response}}'
+        Entities: '{{ner.response}}'
+  - conditions:
+      '{{output.response}} == "Complaint"':
+        - fetch:
+            url: https://crm.example.com/ticket
+            method: POST
+            body:
+              subject: New complaint from {{from}}
+              description: '{{body}}'
+              classification: '{{output.response}}'
+            outputMode: body
+            stream:
+              target:
+                currentSocket: true
+              options:
+                persist: true
+                aggPayload: false
+              payload: {}
+            emitErrors: true
+            query: {}
+            headers: {}
+            auth:
+              awsv4: {}
+        - emit:
+            event: alert.complaint
+            target:
+              currentSocket: true
+            options:
+              persist: true
+              aggPayload: false
+            autocomplete: {}
+      '{{output.response}} == "Reimbursement Request"':
+        - trigger-reimbursement:
+            sender: '{{from}}'
+            content: '{{body}}'
+      default:
+        - emit:
+            event: info.email.received
+            target:
+              currentSocket: true
+            options:
+              persist: true
+              aggPayload: false
+            autocomplete: {}
+  - fetch:
+      url: https://crm.example.com/tickets/history
+      method: POST
+      body:
+        customer: '{{from}}'
+      output: previousTickets
+      emitErrors: true
+      outputMode: body
+      stream:
+        target:
+          currentSocket: true
+        options:
+          persist: true
+          aggPayload: false
+        payload: {}
+      query: {}
+      headers: {}
+      auth:
+        awsv4: {}
+  - repeat:
+      'on': '{{previousTickets.items}}'
+      do:
+        - TicketSummarizerAgent.chat-completion:
+            prompt: |
+              You are an assistant summarizing past customer service tickets.
+              Here's a ticket:
+              Subject: {{item.subject}}
+              Body: {{item.description}}
+              Status: {{item.status}}
+
+              Provide a one-line summary of this ticket.
+            output: summary
+        - set:
+            name: ticketSummaries[]
+            value: '{{summary.response}}'
+            type: push
+  - ContextualAnalystAgent.chat-completion:
+      prompt: |
+        You are a senior legal and business analyst.
+
+        Context:
+        - Current Email Body: {{body}}
+        - Classification: {{output.response}}
+        - Entities: {{ner.response}}
+        - Past Ticket Summaries: {{ticketSummaries}}
+
+        Based on this information, provide:
+        - Legal and contractual implications
+        - Escalation level
+        - Recommended next actions
+      output: deep_insights
+  - fetch:
+      url: https://external-system.example.com/store
+      method: POST
+      body:
+        messageId: '{{object}}'
+        classification: '{{output.response}}'
+        entities: '{{ner.response}}'
+        ticketHistory: '{{ticketSummaries}}'
+        analysis: '{{deep_insights.response}}'
+      emitErrors: true
+      outputMode: body
+      stream:
+        target:
+          currentSocket: true
+        options:
+          persist: true
+          aggPayload: false
+        payload: {}
+      query: {}
+      headers: {}
+      auth:
+        awsv4: {}
+validateArguments: true
+arguments:
+  from:
+    type: string
+    title: Sender
+  to:
+    type: string
+    title: Recipient
+  object:
+    type: string
+    title: Email Subject
+  body:
+    type: string
+    title: Email Body
+    ui:widget: html
+  attachements:
+    type: string
+    title: Attachments
+    ui:widget: upload
+output: '{{output.response}}'
+when:
+  endpoint: true

@@ -1,0 +1,18 @@
+slug: incoming-email
+name: incoming-email
+do:
+  - classify:
+      from: '{{body.X-Envelope-From}}'
+      to: '{{body.To}}'
+      object: '{{body.Subject}}'
+      body: '{{body.body-html}}<!-- raw mode -->'
+      output: result
+  - SendMail.sendMail:
+      to: '{{body.X-Envelope-From}}'
+      replyTo: '{{body.To}}'
+      subject: 'Re: {{body.Subject}}'
+      body: 'Bonjour, classification : ''{{result}}'''
+validateArguments: true
+when:
+  endpoint: true
+output: '{{result}}'

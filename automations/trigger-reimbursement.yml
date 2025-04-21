@@ -1,0 +1,48 @@
+slug: trigger-reimbursement
+name: Trigger Reimbursement Workflow
+description: |
+  Handles reimbursement requests based on sender and message content.
+  Checks eligibility, forwards request to processing system, and logs response.
+do:
+  - fetch:
+      url: https://insurance-system.example.com/contracts/verify
+      method: POST
+      body:
+        email: '{{sender}}'
+        message: '{{content}}'
+      output: contractInfo
+      emitErrors: true
+      outputMode: body
+  - conditions:
+      '{{contractInfo.eligible}}':
+        - fetch:
+            url: https://insurance-system.example.com/reimbursements/submit
+            method: POST
+            body:
+              requester: '{{sender}}'
+              justification: '{{content}}'
+              contractId: '{{contractInfo.contractId}}'
+            output: reimbursementResponse
+        - emit:
+            event: reimbursement.submitted
+            payload:
+              email: '{{sender}}'
+              contractId: '{{contractInfo.contractId}}'
+              response: '{{reimbursementResponse.status}}'
+      default:
+        - emit:
+            event: reimbursement.ineligible
+            payload:
+              email: '{{sender}}'
+              reason: '{{contractInfo.reason}}'
+validateArguments: true
+arguments:
+  sender:
+    type: string
+    title: Email of requester
+  content:
+    type: string
+    title: Message content for reimbursement justification
+output: '{{reimbursementResponse.status}}'
+when:
+  endpoint: false
