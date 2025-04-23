@@ -23,6 +23,6 @@ The workflow uses AI agents, business rules, and system integrations to classify
 
 ## 🚀 How to Use
 
-### 1. **Download the Workspace ZIP**
+### **Download the Workspace ZIP**
 
 Export this repository as a `.zip` archive and upload it on your prisme.ai instance.
